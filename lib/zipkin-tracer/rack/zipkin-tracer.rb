@@ -21,8 +21,8 @@ module ZipkinTracer
   # This middleware reads Zipkin headers from the request and sets/creates a Trace.id usable by the rest of the app
   # It will also send the trace to the Zipkin service using one of the methods configured.
   class RackHandler
-    B3_REQUIRED_HEADERS = %w[HTTP_X_B3_TRACEID HTTP_X_B3_PARENTSPANID HTTP_X_B3_SPANID HTTP_X_B3_SAMPLED].freeze
-    B3_OPT_HEADERS = %w[HTTP_X_B3_FLAGS].freeze
+    B3_REQUIRED_HEADERS = %w[HTTP_X_B3_TRACEID HTTP_X_B3_SPANID HTTP_X_B3_SAMPLED].freeze
+    B3_OPT_HEADERS = %w[HTTP_X_B3_PARENTSPANID HTTP_X_B3_FLAGS].freeze
 
     def initialize(app, config = nil)
       @app = app
@@ -79,13 +79,13 @@ module ZipkinTracer
                              @env.values_at(*B3_REQUIRED_HEADERS)
                            else
                              new_id = Trace.generate_id
-                             [new_id, nil, new_id]
+                             [new_id, new_id]
                            end
-        trace_parameters[3] = should_trace?(trace_parameters[3])
+        trace_parameters[2] = should_trace?(trace_parameters[2])
         trace_parameters += @env.values_at(*B3_OPT_HEADERS) # always check flags
         trace_parameters[4] = (trace_parameters[4] || default_flags).to_i
 
-        Trace::TraceId.new(*trace_parameters)
+        Trace::TraceId.new(trace_parameters[0], trace_parameters[3], trace_parameters[1], trace_parameters[2], trace_parameters[4])
       end
 
       def called_with_zipkin_headers?
@@ -104,7 +104,7 @@ module ZipkinTracer
 
       def should_trace?(parent_trace_sampled)
         if parent_trace_sampled  # A service upstream decided this goes in all the way
-          parent_trace_sampled == 'true'
+          ['1', 'true'].include? parent_trace_sampled
         else
           force_sample? || current_trace_sampled? && !filtered?
         end
